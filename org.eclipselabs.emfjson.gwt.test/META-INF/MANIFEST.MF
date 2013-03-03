@@ -1,0 +1,17 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: %pluginName
+Bundle-SymbolicName: org.eclipselabs.emfjson.gwt.test;singleton:=true
+Bundle-Version: 1.0.0.qualifier
+Bundle-ClassPath: .
+Bundle-Vendor: %providerName
+Bundle-Localization: plugin
+Bundle-RequiredExecutionEnvironment: JavaSE-1.6
+Export-Package: org.eclipselabs.emfjson.junit.model,
+ org.eclipselabs.emfjson.junit.model.impl,
+ org.eclipselabs.emfjson.junit.model.util
+Bundle-ActivationPolicy: lazy
+Import-Package: org.eclipselabs.emfjson.gwt,
+ org.eclipselabs.emfjson.gwt.common,
+ org.eclipselabs.emfjson.gwt.resource
+Require-Bundle: org.eclipselabs.emfjson.gwt;bundle-version="0.5.2"
