@@ -1,0 +1,129 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>org.eclipselabs</groupId>
+	<artifactId>emfjson-gwt</artifactId>
+	<packaging>pom</packaging>
+	<version>0.5.2-SNAPSHOT</version>
+
+	<modules>
+		<module>org.eclipselabs.emfjson.gwt</module>
+		<!-- <module>org.eclipselabs.emfjson.gwt.test</module> -->
+	</modules>
+
+	<properties>
+		<gwtVersion>2.5.1-rc1</gwtVersion>
+		<emfVersion>2.9.0-SNAPSHOT</emfVersion>
+		<repository.directory>/Users/guillaume/Projects/maven-repository</repository.directory>
+		<github.global.server>github</github.global.server>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>com.google.gwt</groupId>
+			<artifactId>gwt-user</artifactId>
+			<version>${gwtVersion}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.eclipse</groupId>
+			<artifactId>org.eclipse.emf.gwt.ecore</artifactId>
+			<version>${emfVersion}</version>
+		</dependency>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>4.7</version>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<repositories>
+		<repository>
+			<id>emfgwt-repository</id>
+			<url>https://raw.github.com/ghillairet/maven-repository/master/</url>
+			<snapshots>
+				<enabled>true</enabled>
+				<updatePolicy>always</updatePolicy>
+			</snapshots>
+		</repository>
+	</repositories>
+
+	<build>
+		<sourceDirectory>src</sourceDirectory>
+
+		<plugins>
+			<plugin>
+				<groupId>com.github.github</groupId>
+				<artifactId>site-maven-plugin</artifactId>
+				<version>0.7</version>
+				<configuration>
+					<!-- git commit message -->
+					<message>Maven artifacts for ${project.version}</message>
+					<!-- disable webpage processing -->
+					<noJekyll>true</noJekyll>
+					<!-- matches distribution management repository url above -->
+					<outputDirectory>${repository.directory}</outputDirectory>
+					<!-- remote branch name -->
+					<branch>refs/heads/master</branch>
+					<includes>
+						<include>**/*</include>
+					</includes>
+					<!-- github repo name -->
+					<repositoryName>maven-repository</repositoryName>
+					<!-- github username -->
+					<repositoryOwner>ghillairet</repositoryOwner>
+				</configuration>
+				<executions>
+					<!-- run site-maven-plugin's 'site' target as part of the build's normal 
+						'deploy' phase -->
+					<execution>
+						<goals>
+							<goal>site</goal>
+						</goals>
+						<phase>deploy</phase>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+
+		<pluginManagement>
+			<plugins>
+				<plugin>
+					<groupId>org.codehaus.mojo</groupId>
+					<artifactId>gwt-maven-plugin</artifactId>
+					<version>${gwtVersion}</version>
+					<executions>
+						<execution>
+							<goals>
+								<goal>resources</goal>
+							</goals>
+						</execution>
+					</executions>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<configuration>
+						<source>1.6</source>
+						<target>1.6</target>
+					</configuration>
+				</plugin>
+			</plugins>
+		</pluginManagement>
+
+	</build>
+
+	<distributionManagement>
+		<repository>
+			<id>github-release</id>
+			<url>file://${repository.directory}/release</url>
+		</repository>
+		<snapshotRepository>
+			<id>github-snapshot</id>
+			<url>file://${repository.directory}/snapshot</url>
+		</snapshotRepository>
+	</distributionManagement>
+
+</project>
