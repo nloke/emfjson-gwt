@@ -2,8 +2,6 @@
  */
 package org.eclipselabs.emfjson.junit.model.impl;
 
-import static org.eclipselabs.emfjson.junit.model.ModelPackage.CONTAINER;
-
 import org.eclipse.emf.common.util.Reflect;
 import org.eclipse.emf.ecore.EAttribute;
 import org.eclipse.emf.ecore.EClass;

@@ -9,11 +9,11 @@
 
 	<modules>
 		<module>org.eclipselabs.emfjson.gwt</module>
-		<!-- <module>org.eclipselabs.emfjson.gwt.test</module> -->
+		<module>org.eclipselabs.emfjson.gwt.test</module>
 	</modules>
 
 	<properties>
-		<gwtVersion>2.5.1-rc1</gwtVersion>
+		<gwtVersion>2.5.1</gwtVersion>
 		<emfVersion>2.9.0-SNAPSHOT</emfVersion>
 		<repository.directory>/Users/guillaume/Projects/maven-repository</repository.directory>
 		<github.global.server>github</github.global.server>
@@ -31,18 +31,18 @@
 			<artifactId>org.eclipse.emf.gwt.ecore</artifactId>
 			<version>${emfVersion}</version>
 		</dependency>
-		<dependency>
-			<groupId>junit</groupId>
-			<artifactId>junit</artifactId>
-			<version>4.7</version>
-			<scope>test</scope>
-		</dependency>
+<!-- 		<dependency> -->
+<!-- 			<groupId>junit</groupId> -->
+<!-- 			<artifactId>junit</artifactId> -->
+<!-- 			<version>4.7</version> -->
+<!-- 			<scope>test</scope> -->
+<!-- 		</dependency> -->
 	</dependencies>
 
 	<repositories>
 		<repository>
 			<id>emfgwt-repository</id>
-			<url>https://raw.github.com/ghillairet/maven-repository/master/</url>
+			<url>https://raw.github.com/ghillairet/maven-repository/master/snapshot</url>
 			<snapshots>
 				<enabled>true</enabled>
 				<updatePolicy>always</updatePolicy>
@@ -51,8 +51,6 @@
 	</repositories>
 
 	<build>
-		<sourceDirectory>src</sourceDirectory>
-
 		<plugins>
 			<plugin>
 				<groupId>com.github.github</groupId>
