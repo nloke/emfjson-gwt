@@ -11,6 +11,8 @@
 	<artifactId>org.eclipselabs.emfjson.gwt</artifactId>
 
 	<build>
+		<sourceDirectory>src</sourceDirectory>
+
 		<resources>
 			<resource>
 				<directory>src</directory>

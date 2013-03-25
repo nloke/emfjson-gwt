@@ -26,22 +26,20 @@ import com.google.gwt.json.client.JSONValue;
  */
 public abstract class JsOutputStream extends ByteArrayOutputStream implements URIConverter.Saveable {
 	
-	@SuppressWarnings("unused")
 	private Map<?, ?> options;
-	
 	protected final JSONSave writer;
 	protected JSONValue currentRoot;
 	protected Resource resource;
 	
 	public JsOutputStream(Map<?, ?> options) {
 		this.options = options;
-		this.writer = new JSONSave(options);
+		this.writer = new JSONSave();
 	}
 	
 	@Override
 	public void saveResource(Resource resource) throws IOException {
 		this.resource = resource;
-		this.currentRoot = writer.genJson(resource);
+		this.currentRoot = writer.genJson(resource, options);
 	}
 	
 }

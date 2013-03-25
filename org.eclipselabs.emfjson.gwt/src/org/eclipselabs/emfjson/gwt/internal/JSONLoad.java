@@ -13,91 +13,271 @@ package org.eclipselabs.emfjson.gwt.internal;
 import static org.eclipselabs.emfjson.gwt.common.Constants.EJS_REF_KEYWORD;
 import static org.eclipselabs.emfjson.gwt.common.Constants.EJS_TYPE_KEYWORD;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.eclipse.emf.common.util.Callback;
 import org.eclipse.emf.common.util.EList;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EAttribute;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EReference;
+import org.eclipse.emf.ecore.EStructuralFeature;
+import org.eclipse.emf.ecore.EcorePackage;
 import org.eclipse.emf.ecore.InternalEObject;
 import org.eclipse.emf.ecore.resource.Resource;
 import org.eclipse.emf.ecore.resource.ResourceSet;
 import org.eclipse.emf.ecore.resource.impl.ResourceSetImpl;
 import org.eclipse.emf.ecore.util.EcoreUtil;
+import org.eclipse.emf.ecore.util.InternalEList;
+import org.eclipselabs.emfjson.gwt.EMFJs;
+import org.eclipselabs.emfjson.gwt.common.ModelUtil;
 
 import com.google.gwt.json.client.JSONArray;
 import com.google.gwt.json.client.JSONBoolean;
 import com.google.gwt.json.client.JSONNumber;
 import com.google.gwt.json.client.JSONObject;
-import com.google.gwt.json.client.JSONParser;
 import com.google.gwt.json.client.JSONString;
 import com.google.gwt.json.client.JSONValue;
 
 public class JSONLoad {
 
-	private JSONValue rootNode;
-	private ResourceSet resourceSet;
 	private final Map<String, String> nsMap = new HashMap<String, String>();
+	private EClass rootClass;
+	private ResourceSet resourceSet;
+	private boolean useProxyAttributes = false;
+	private Map<EObject, JSONValue> processed = new HashMap<EObject, JSONValue>();
 
-	public JSONLoad(InputStream inStream, Map<?,?> options) {
-//		this.options = options;
-		rootNode = JSONParser.parseStrict(toString(inStream));
-	}
-	
-	protected EClass getEClass(JSONObject js) {
-		if (js.containsKey("eClass")){
-			JSONString value = js.get("eClass").isString();
-			if (value != null){
-				return getEClass(URI.createURI(value.stringValue()));
-			}
-		}
-		return null;
+	public JSONLoad() {		
 	}
 
-	private EClass getEClass(URI uri) {
-		if (resourceSet == null) {
-			return (EClass) new ResourceSetImpl().getEObject(uri, false);	
-		}
-		return (EClass) resourceSet.getEObject(uri, false);
-	}
-	
-	public Collection<EObject> fillResource(Resource resource) {
-		this.resourceSet = resource.getResourceSet() != null ? resource.getResourceSet() : new ResourceSetImpl();
-		final Collection<EObject> result = resource.getContents();
+	private void init(Resource resource, Map<?,?> options) {
+		processed.clear();
 
-		JSONObject rootObject = rootNode.isObject();
-		if (rootObject != null){
-			EClass eClass = getEClass(rootObject);
-			final EObject eObject = EcoreUtil.create(eClass);
-			result.add(eObject);
-
-			fillEAttribute(eObject, eClass, rootObject);
-			fillEReference(eObject, eClass, rootObject, resource);
+		if (options == null) {
+			options = Collections.emptyMap();
 		}
 
-		return null;
+		resourceSet = resource.getResourceSet() != null ? resource.getResourceSet() : new ResourceSetImpl();
+
+		useProxyAttributes = Boolean.TRUE.equals(options.get(EMFJs.OPTION_PROXY_ATTRIBUTES));
+
+		if (options.containsKey(EMFJs.OPTION_ROOT_ELEMENT)) {
+			rootClass = (EClass) options.get(EMFJs.OPTION_ROOT_ELEMENT);
+		}
 	}
 
-	private void fillEAttribute(EObject obj, EClass eClass, JSONObject root) {
-		for (EAttribute attribute: eClass.getEAllAttributes()) {
-			JSONValue node = root.get(attribute.getName());
-			if (node != null) {
-				JSONArray array = node.isArray();
-				if (array != null) {
-					for (int i=0; i<array.size(); i++) {
-						JSONValue value = array.get(i);
-						setEAttributeValue(obj, attribute, value);
-					}
-				} else {
-					setEAttributeValue(obj, attribute, node);
+	public void fillResource(final Resource resource, InputStream inStream, Map<?,?> options) { 
+		init(resource, options);
+
+		JSONValue root = JSUtil.parse(inStream);
+
+		if (root == null) { 
+			throw new IllegalArgumentException("root node should not be null.");
+		}
+
+		final JSONObject rootObject = root.isObject();
+		if (rootObject != null) {
+			if (rootClass != null) {
+				EObject eObject = createEObject(resource, rootClass, rootObject);
+				if (eObject != null) {
+					resource.getContents().add(eObject);
+
+				}
+			} else {
+				if (rootObject.containsKey(EJS_TYPE_KEYWORD)) {
+					URI eClassURI = URI.createURI(rootObject.get(EJS_TYPE_KEYWORD).toString());
+					getEClass(eClassURI, resourceSet, new Callback<EObject>() {
+						@Override
+						public void onFailure(Throwable caught) {
+							System.out.println(caught);
+						}
+						@Override
+						public void onSuccess(EObject result) {
+							if (result instanceof EClass) {
+								EObject eObject = createEObject(resource, (EClass) result, rootObject);
+								if (eObject != null) { 
+									resource.getContents().add(eObject);
+									processReferences(resource);
+								}
+							}
+						}
+					});
 				}
 			}
+		}
+	}
+
+	private void processReferences(final Resource resource) {
+		for (EObject eObject: resource.getContents()) {
+			if (processed.containsKey(eObject)) {
+				fillEReference(eObject, processed.get(eObject).isObject(), resource);
+			}
+		}
+	}
+
+	private EObject createEObject(Resource resource, EClass eClass, JSONObject node) {
+		if (node == null) return null;
+
+		final EObject object = EcoreUtil.create(eClass);
+		processed.put(object, node);
+
+		fillEAttribute(object, node);
+		fillEContainment(object, node, resource);
+
+		return object;
+	}
+
+	private void fillEAttribute(EObject container, JSONObject node) {
+		final EClass eClass = container.eClass();
+		if (node == null) return;
+
+		// Iterates over all key values of the JSON Object,
+		// if the value is not an object then
+		// if the key corresponds to an EAttribute, fill it
+		// if not and the EClass contains a MapEntry, fill it with the key, value.
+
+		for (String key: node.keySet()) {
+			JSONValue value = node.get(key);
+
+			if (value.isObject() != null) // not an attribute
+				continue;
+
+			EAttribute attribute = ModelUtil.getEAttribute(eClass, key);
+			
+			if (attribute != null && !attribute.isTransient() && !attribute.isDerived()) {
+				if (value.isArray() != null) {
+					JSONArray array = value.isArray();
+					for (int i=0; i<array.size(); i++) {
+						setEAttributeValue(container, attribute, array.get(i));
+					}
+				} else {
+					setEAttributeValue(container, attribute, value);
+				}
+			} else {
+				EStructuralFeature eFeature = ModelUtil.getDynamicMapEntryFeature(eClass);
+				if (eFeature != null) {
+					@SuppressWarnings("unchecked")
+					EList<EObject> values = (EList<EObject>) container.eGet(eFeature);
+					values.add(createEntry(key, value));
+				}
+			}
+		}
+	}
+
+	private void fillEContainment(EObject eObject, JSONObject node, Resource resource) {
+		final EClass eClass = eObject.eClass();
+		if (node == null) return;
+
+		for (String key: node.keySet()) {
+			JSONValue value = node.get(key);
+
+			EReference reference = ModelUtil.getEReference(eClass, key);
+			if (reference != null && reference.isContainment() && !reference.isTransient()) {
+				if (ModelUtil.isMapEntry(reference.getEType()) && value.isObject() != null) {
+					createMapEntry(eObject, reference, value.isObject());
+				} else {
+					createContainment(eObject, reference, node, value, resource);
+				}
+			}
+		}
+	}
+
+	private void fillEReference(EObject eObject, JSONObject node, Resource resource) {
+		if (node == null) return;
+		final EClass eClass = eObject.eClass();	
+
+		for (String key: node.keySet()) {
+			JSONValue value = node.get(key);
+			EReference reference = ModelUtil.getEReference(eClass, key);
+
+			if (reference != null && !reference.isContainment() && 
+					!reference.isDerived() && !reference.isTransient()) {
+
+				JSONArray array = value.isArray();
+				if (array != null) {
+					for (int i=0; i<array.size(); i++) {
+						createProxyReference(eObject, node, array.get(i).isObject(), reference, resource);
+					}
+				} else {
+					createProxyReference(eObject, node, value.isObject(), reference, resource);
+				}
+
+			}
+		}
+
+		for (EObject content: eObject.eContents()) {
+			if (processed.containsKey(content))
+				fillEReference(content, processed.get(content).isObject(), resource);
+		}
+	}
+
+	private void createContainment(EObject eObject, EReference reference, JSONObject root, JSONValue node, Resource resource) {
+		if (node.isArray() != null) {
+			JSONArray array = node.isArray();
+
+			if (reference.isMany()) {
+				@SuppressWarnings("unchecked")
+				EList<EObject> values = (EList<EObject>) eObject.eGet(reference);
+
+				for (int i=0; i<array.size(); i++) {
+					JSONValue current = array.get(i);
+					EObject contained = createContainedObject(reference, root, current.isObject(), resource);
+					if (contained != null) values.add(contained);
+				}
+			} else if (array.size() > 0) {
+				JSONValue current = array.get(0);
+				EObject contained = createContainedObject(reference, root, current.isObject(), resource);
+				if (contained != null) eObject.eSet(reference, contained);
+			}
+
+		} else {
+			EObject contained = createContainedObject(reference, root, node.isObject(), resource);
+
+			if (reference.isMany()) {
+				@SuppressWarnings("unchecked")
+				EList<EObject> values = (EList<EObject>) eObject.eGet(reference);
+				if (contained != null) values.add(contained);
+			} else {
+				if (contained != null) eObject.eSet(reference, contained);
+			}
+		}
+	}
+
+	private EObject createContainedObject(EReference reference, JSONObject root, JSONObject node, Resource resource) {
+		EClass refClass = findEClass(reference.getEReferenceType(), node, root, resource);
+		EObject obj;
+
+		if (isRefNode(node)) {
+			obj = createProxy(resource, refClass, node);
+		} else {
+			obj = createEObject(resource, refClass, node);	
+		}
+
+		return obj;
+	}
+
+	private EObject getOrCreateProxyReference(EReference reference, JSONObject root, JSONObject node, Resource resource) {
+		EObject obj = findEObject(resource, node);
+		if (obj == null) {
+			EClass refClass = findEClass(reference.getEReferenceType(), node, root, resource);
+			obj = createProxy(resource, refClass, node);
+		}
+		return obj;
+	}
+
+	private void createProxyReference(EObject eObject, JSONObject root, JSONObject node, EReference reference, Resource resource) {
+		EObject proxy = getOrCreateProxyReference(reference, root, node, resource);
+		if (proxy != null && reference.isMany()) {
+			@SuppressWarnings("unchecked")
+			InternalEList<EObject> values = (InternalEList<EObject>) eObject.eGet(reference);
+			values.addUnique(proxy);
+		} else if (proxy != null) {
+			eObject.eSet(reference, proxy);
 		}
 	}
 
@@ -117,19 +297,19 @@ public class JSONLoad {
 			}
 		}
 	}
-	
+
 	private void setEAttributeStringValue(EObject obj, EAttribute attribute, JSONString value) {
 		final String stringValue = value.stringValue();
-		
+
 		if (stringValue != null && !stringValue.trim().isEmpty()) {
 			Object newValue;
-			
+
 			if (attribute.getEAttributeType().getInstanceClass().isEnum()) {
 				newValue = EcoreUtil.createFromString(attribute.getEAttributeType(), stringValue.toUpperCase());
 			} else {
 				newValue = EcoreUtil.createFromString(attribute.getEAttributeType(), stringValue);
 			}
-			
+
 			if (!attribute.isMany()) {
 				obj.eSet(attribute, newValue);
 			} else {
@@ -139,10 +319,10 @@ public class JSONLoad {
 			}
 		}
 	}
-	
+
 	private void setEAttributeIntegerValue(EObject obj, EAttribute attribute, JSONNumber value) {
 		final int intValue = (int) value.doubleValue();
-		
+
 		if (!attribute.isMany()) {
 			obj.eSet(attribute, intValue);
 		} else {
@@ -151,10 +331,10 @@ public class JSONLoad {
 			values.add(intValue);
 		}
 	}
-	
+
 	private void setEAttributeBooleanValue(EObject obj, EAttribute attribute, JSONBoolean value) {
 		final boolean boolValue = value.booleanValue();
-		
+
 		if (!attribute.isMany()) {
 			obj.eSet(attribute, boolValue);
 		} else {
@@ -164,72 +344,59 @@ public class JSONLoad {
 		}
 	}
 
-	private void fillEReference(EObject rootObject, EClass rootClass, JSONObject root, Resource resource) {
-		for (EReference reference: rootClass.getEAllReferences()) {
-			final JSONValue node = root.get(reference.getName());
+	private void createMapEntry(EObject container, EReference reference, JSONObject jsonObject) {
+		if (jsonObject == null) return;
 
-			if (node != null) {
-
-				if (reference.isMany()) {
-					@SuppressWarnings("unchecked")
-					EList<EObject> values = (EList<EObject>) rootObject.eGet(reference);
-
-					JSONArray array = node.isArray();
-					if (array != null) {
-						for (int i=0; i<array.size(); i++) {
-							JSONValue value = array.get(i); 
-							JSONObject current = value.isObject();
-							if (current != null){
-								EClass eClass = findEClass(reference.getEReferenceType(), current, root, resource);
-								EObject obj = createEObject(resource, eClass, current);
-								if (obj != null) {
-									values.add(obj);
-								}
-							}
-						}
-					} else {
-						JSONObject current = node.isObject();
-						if (current != null){
-							EClass eClass = findEClass(reference.getEReferenceType(), current, root, resource);
-							EObject obj = createEObject(resource, eClass, current);
-							if (obj != null) values.add(obj);
-						}
-					}
-				} else {
-					JSONObject current = node.isObject();
-					if (current != null) {
-						EClass eClass = findEClass(reference.getEReferenceType(), current, root, resource);
-						EObject obj = createEObject(resource, eClass, current);
-
-						if (obj != null) rootObject.eSet(reference, obj);
-					}
-				}
-
+		if (reference.isMany()) {
+			@SuppressWarnings("unchecked")
+			EList<EObject> values = (EList<EObject>) container.eGet(reference);
+			for (String key: jsonObject.keySet()) {
+				values.add(createEntry(key, jsonObject.get(key)));
+			}
+		} else {
+			if (jsonObject.keySet().size() > 0) {
+				String key = jsonObject.keySet().iterator().next();
+				container.eSet(reference, createEntry(key, jsonObject.get(key)));
 			}
 		}
 	}
 
-	private EObject createEObject(Resource resource, EClass eClass, JSONObject node) {
-		if (node.get(EJS_REF_KEYWORD) != null) {
+	private EObject createEntry(String key, JSONValue value) {
+		EObject eObject = EcoreUtil.create(EcorePackage.Literals.ESTRING_TO_STRING_MAP_ENTRY);
+		eObject.eSet(EcorePackage.Literals.ESTRING_TO_STRING_MAP_ENTRY__KEY, key);
+		String entryValue;
+		if (value.isString() != null)
+			entryValue = value.isString().stringValue();
+		else entryValue = value.toString();
+		eObject.eSet(EcorePackage.Literals.ESTRING_TO_STRING_MAP_ENTRY__VALUE, entryValue);
 
-			final URI objectURI = getEObjectURI(node.get(EJS_REF_KEYWORD), resource);
-			EObject object = resourceSet.getEObject(objectURI, false);
+		return eObject;
+	}
 
-			if (object == null) {
-				object = EcoreUtil.create(eClass);
-				((InternalEObject)object).eSetProxyURI(objectURI);
+	private EObject createProxy(Resource resource, EClass eClass, JSONObject node) {
+		EObject proxy = null;
+
+		if (isRefNode(node)) {
+			final URI objectURI = ModelUtil.getEObjectURI(node.get(EJS_REF_KEYWORD), resource.getURI(), nsMap);
+			proxy = EcoreUtil.create(eClass);
+			((InternalEObject) proxy).eSetProxyURI(objectURI);
+
+			if (useProxyAttributes) {
+				JSONObject refNode = JSUtil.getNode(resource, objectURI, eClass);
+				if (refNode != null) fillEAttribute(proxy, refNode);
 			}
-
-			return object;
-		} else {
-
-			final EObject obj = EcoreUtil.create(eClass);
-
-			fillEAttribute(obj, eClass, node);
-			fillEReference(obj, eClass, node, resource);
-
-			return obj;
 		}
+
+		return proxy;
+	}
+
+	private EObject findEObject(Resource resource, JSONValue node) {
+		EObject eObject = null;
+		if (node.isObject() != null) {
+			final URI objectURI = ModelUtil.getEObjectURI(node.isObject().get(EJS_REF_KEYWORD), resource.getURI(), nsMap);
+			eObject = resourceSet.getEObject(objectURI, false);
+		}
+		return eObject;
 	}
 
 	private EClass findEClass(EClass eReferenceType, JSONObject node, JSONObject root, Resource resource) {
@@ -256,7 +423,7 @@ public class JSONLoad {
 					return eReferenceType;
 				}
 				else {
-					final EObject o = this.resourceSet.getEObject(typeURI, false);
+					final EObject o = this.resourceSet.getEObject(typeURI, true);
 					final EClass found = o != null && o instanceof EClass ? (EClass)o : null;
 					if (found != null) {
 						return found;
@@ -267,6 +434,14 @@ public class JSONLoad {
 			}
 		}
 		return eReferenceType;
+	}
+
+	private boolean isRefNode(JSONValue node) {
+		return node.isObject() != null && node.isObject().containsKey(EJS_REF_KEYWORD);
+	}
+
+	private void getEClass(URI uri, ResourceSet resourceSet, Callback<EObject> callback) {
+		resourceSet.getEObject(uri, callback);
 	}
 
 	private URI getEObjectURI(JSONValue jsonValue, Resource resource) {
@@ -286,16 +461,4 @@ public class JSONLoad {
 		}
 	}
 
-	public String toString(InputStream inStream) {
-		final StringBuilder out = new StringBuilder();
-		byte[] b = new byte[4096];
-		try {
-			for (int n; (n = inStream.read(b)) != -1;) {
-				out.append(new String(b, 0, n));
-			}
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		return out.toString();
-	}
 }

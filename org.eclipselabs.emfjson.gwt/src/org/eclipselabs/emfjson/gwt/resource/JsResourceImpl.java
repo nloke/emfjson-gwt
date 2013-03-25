@@ -40,8 +40,8 @@ public class JsResourceImpl extends ResourceImpl {
 			options = Collections.<String, Object> emptyMap();
 		}
 		
-		JSONLoad loader = new JSONLoad(inputStream, options);
-		loader.fillResource(this);
+		final JSONLoad loader = new JSONLoad();
+		loader.fillResource(this, inputStream, options);
 	}
 	
 	@Override
@@ -50,7 +50,7 @@ public class JsResourceImpl extends ResourceImpl {
 			options = Collections.<String, Object> emptyMap();
 		}
 		
-		JSONSave saver = new JSONSave(options);
-		saver.write(outputStream, this);
+		final JSONSave saver = new JSONSave();
+		saver.write(this, outputStream, options);
 	}
 }
