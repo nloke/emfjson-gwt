@@ -18,6 +18,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.eclipse.emf.common.util.Callback;
 import org.eclipse.emf.common.util.EList;
@@ -45,6 +47,7 @@ import com.google.gwt.json.client.JSONString;
 import com.google.gwt.json.client.JSONValue;
 
 public class JSONLoad {
+	private static Logger logger = Logger.getLogger(JSONLoad.class.getName());
 
 	private final Map<String, String> nsMap = new HashMap<String, String>();
 	private EClass rootClass;
@@ -52,7 +55,7 @@ public class JSONLoad {
 	private boolean useProxyAttributes = false;
 	private Map<EObject, JSONValue> processed = new HashMap<EObject, JSONValue>();
 
-	public JSONLoad() {		
+	public JSONLoad() {
 	}
 
 	private void init(Resource resource, Map<?,?> options) {
@@ -71,36 +74,55 @@ public class JSONLoad {
 		}
 	}
 
-	public void fillResource(final Resource resource, InputStream inStream, Map<?,?> options) { 
+	public void fillResource(final Resource resource, InputStream inStream, Map<?,?> options) {
 		init(resource, options);
 
 		JSONValue root = JSUtil.parse(inStream);
 
-		if (root == null) { 
+		if (root == null) {
 			throw new IllegalArgumentException("root node should not be null.");
 		}
 
 		final JSONObject rootObject = root.isObject();
 		if (rootObject != null) {
+			fillEObject(resource, rootObject);
+		} else {
+			final JSONArray jsonArray = root.isArray();
+			if (jsonArray != null) {
+				for (int i=0; i<jsonArray.size(); i++) {
+					final JSONValue jsonValue = jsonArray.get(i);
+					final JSONObject jsonObject = jsonValue.isObject();
+
+					fillEObject(resource, jsonObject);
+				}
+			}
+		}
+	}
+
+	private void fillEObject(final Resource resource, final JSONObject jsonObject) {
+		if (jsonObject != null) {
 			if (rootClass != null) {
-				EObject eObject = createEObject(resource, rootClass, rootObject);
+				EObject eObject = createEObject(resource, rootClass, jsonObject);
 				if (eObject != null) {
 					resource.getContents().add(eObject);
 
 				}
 			} else {
-				if (rootObject.containsKey(EJS_TYPE_KEYWORD)) {
-					URI eClassURI = URI.createURI(rootObject.get(EJS_TYPE_KEYWORD).toString());
+				if (jsonObject.containsKey(EJS_TYPE_KEYWORD)) {
+					JSONString jsonString = jsonObject.get(EJS_TYPE_KEYWORD).isString();
+
+					URI eClassURI = URI.createURI(jsonString.stringValue());
 					getEClass(eClassURI, resourceSet, new Callback<EObject>() {
 						@Override
 						public void onFailure(Throwable caught) {
-							System.out.println(caught);
+							logger.log(Level.SEVERE, "", caught);
 						}
+
 						@Override
 						public void onSuccess(EObject result) {
 							if (result instanceof EClass) {
-								EObject eObject = createEObject(resource, (EClass) result, rootObject);
-								if (eObject != null) { 
+								EObject eObject = createEObject(resource, (EClass) result, jsonObject);
+								if (eObject != null) {
 									resource.getContents().add(eObject);
 									processReferences(resource);
 								}
@@ -148,7 +170,7 @@ public class JSONLoad {
 				continue;
 
 			EAttribute attribute = ModelUtil.getEAttribute(eClass, key);
-			
+
 			if (attribute != null && !attribute.isTransient() && !attribute.isDerived()) {
 				if (value.isArray() != null) {
 					JSONArray array = value.isArray();
@@ -189,13 +211,13 @@ public class JSONLoad {
 
 	private void fillEReference(EObject eObject, JSONObject node, Resource resource) {
 		if (node == null) return;
-		final EClass eClass = eObject.eClass();	
+		final EClass eClass = eObject.eClass();
 
 		for (String key: node.keySet()) {
 			JSONValue value = node.get(key);
 			EReference reference = ModelUtil.getEReference(eClass, key);
 
-			if (reference != null && !reference.isContainment() && 
+			if (reference != null && !reference.isContainment() &&
 					!reference.isDerived() && !reference.isTransient()) {
 
 				JSONArray array = value.isArray();
@@ -255,7 +277,7 @@ public class JSONLoad {
 		if (isRefNode(node)) {
 			obj = createProxy(resource, refClass, node);
 		} else {
-			obj = createEObject(resource, refClass, node);	
+			obj = createEObject(resource, refClass, node);
 		}
 
 		return obj;
@@ -404,7 +426,7 @@ public class JSONLoad {
 
 			if (node.containsKey(EJS_REF_KEYWORD)) {
 				URI refURI = getEObjectURI(node.get(EJS_REF_KEYWORD), resource);
-				EObject found = resourceSet.getEObject(refURI, false); 
+				EObject found = resourceSet.getEObject(refURI, false);
 				if (found != null) {
 					return found.eClass();
 				}
@@ -412,11 +434,11 @@ public class JSONLoad {
 					JSONString typeValue = node.get(EJS_TYPE_KEYWORD).isString();
 					return (EClass) resourceSet.getEObject(URI.createURI(typeValue.stringValue()), false);
 				}
-				//				JsonNode refNode = findNode(refURI, eReferenceType, rootNode);
-				//				if (refNode != null) {
-				//					return findEClass(eReferenceType, refNode, root, resource);
-				//				}
-			} 
+				// JsonNode refNode = findNode(refURI, eReferenceType, rootNode);
+				// if (refNode != null) {
+				// return findEClass(eReferenceType, refNode, root, resource);
+				// }
+			}
 			else if (node.containsKey(EJS_TYPE_KEYWORD)) {
 				final URI typeURI = getEObjectURI(node.get(EJS_TYPE_KEYWORD), eReferenceType.eResource());
 				if (typeURI.fragment().equals(eReferenceType.getName())) {

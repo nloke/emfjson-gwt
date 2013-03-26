@@ -127,9 +127,9 @@ public class ModelUtil {
 	}
 
 	public static URI getEObjectURI(JSONValue jsonNode, URI uri, Map<String, String> nsMap) {
-		if (jsonNode == null) return null;
+		final JSONString string = jsonNode.isString();
+		final String value = string == null ? "" : string.stringValue();
 
-		final String value = jsonNode.toString();
 		if (value.startsWith("#//")) { // is fragment
 			return URI.createURI(uri+value);
 		} else if (value.contains("#//") && nsMap.keySet().contains(value.split("#//")[0])) {
