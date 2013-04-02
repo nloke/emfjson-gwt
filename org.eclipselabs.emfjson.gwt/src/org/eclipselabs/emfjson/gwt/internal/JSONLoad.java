@@ -310,7 +310,7 @@ public class JSONLoad {
 		} else {
 			JSONNumber number = node.isNumber();
 			if (number != null) {
-				setEAttributeIntegerValue(obj, attribute, number);
+				setEAttributeNumberValue(obj, attribute, number);
 			} else {
 				JSONBoolean bool = node.isBoolean();
 				if (bool != null) {
@@ -342,15 +342,17 @@ public class JSONLoad {
 		}
 	}
 
-	private void setEAttributeIntegerValue(EObject obj, EAttribute attribute, JSONNumber value) {
-		final int intValue = (int) value.doubleValue();
+	private void setEAttributeNumberValue(EObject obj, EAttribute attribute, JSONNumber value) {
+		final String numberValue = "" + value.doubleValue();
+
+		Object newValue = EcoreUtil.createFromString(attribute.getEAttributeType(), numberValue);
 
 		if (!attribute.isMany()) {
-			obj.eSet(attribute, intValue);
+			obj.eSet(attribute, newValue);
 		} else {
 			@SuppressWarnings("unchecked")
 			Collection<Object> values = (Collection<Object>) obj.eGet(attribute);
-			values.add(intValue);
+			values.add(newValue);
 		}
 	}
 
